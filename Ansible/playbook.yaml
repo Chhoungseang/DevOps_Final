@@ -1,0 +1,59 @@
+---
+- name: Deploy and test Laravel pod
+  hosts: localhost
+  gather_facts: no
+  vars:
+    pod_name: laravel-deployment-5787cbdfdc-zfws5
+    backup_path: /tmp/mysql_backup.sql
+    mysql_user: root
+    mysql_password: Hello@123
+    mysql_database: laravel-db
+    mysql_host: 127.0.0.1
+    mysql_port: 3306
+
+  tasks:
+    - name: Check for local git changes inside the pod
+      shell: kubectl exec {{ pod_name }} -- git status --porcelain
+      register: git_status
+
+    - name: Fail if local git changes found
+      fail:
+        msg: "Local git changes exist, cannot pull."
+      when: git_status.stdout != ""
+
+    - name: Git pull inside the pod
+      shell: kubectl exec {{ pod_name }} -- git pull
+
+    - name: Run composer install inside pod
+      shell: kubectl exec {{ pod_name }} -- composer install --no-interaction --no-dev --optimize-autoloader
+
+    - name: Run npm install inside pod
+      shell: kubectl exec {{ pod_name }} -- npm install
+
+    - name: Run npm build inside pod
+      shell: kubectl exec {{ pod_name }} -- npm run build
+
+    - name: Switch to SQLite for testing
+      shell: |
+        kubectl exec {{ pod_name }} -- bash -c "cp .env .env.backup && \
+          sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/' .env && \
+          sed -i '/DB_HOST/d' .env && \
+          sed -i '/DB_PORT/d' .env && \
+          sed -i '/DB_DATABASE/d' .env && \
+          sed -i '/DB_USERNAME/d' .env && \
+          sed -i '/DB_PASSWORD/d' .env && \
+          echo 'DB_DATABASE=/tmp/database.sqlite' >> .env && \
+          touch /tmp/database.sqlite"
+
+    - name: Run tests inside the pod using SQLite
+      shell: kubectl exec {{ pod_name }} -- ./vendor/bin/phpunit
+
+    - name: Restore original .env after tests
+      shell: kubectl exec {{ pod_name }} -- mv .env.backup .env
+
+    - name: Backup MySQL database from inside pod
+      shell: |
+        kubectl exec {{ pod_name }} -- bash -c "mysqldump -h {{ mysql_host }} -P {{ mysql_port }} -u {{ mysql_user }} -p'{{ mysql_password }}' {{ mysql_database }} > /tmp/mysql_backup.sql"
+
+    - name: Copy MySQL backup from pod to local
+      shell: kubectl cp {{ pod_name }}:/tmp/mysql_backup.sql ./mysql_backup.sql

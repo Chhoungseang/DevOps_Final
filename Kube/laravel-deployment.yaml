@@ -188,7 +188,7 @@ spec:
             - name: DB_PORT
               value: "3306"
             - name: DB_DATABASE
-              value: laravel-db
+              value: Chhoungseang-db
             - name: DB_USERNAME
               value: root
             - name: DB_PASSWORD
@@ -263,7 +263,7 @@ spec:
                   name: mysql-secret
                   key: MYSQL_ROOT_PASSWORD
             - name: MYSQL_DATABASE
-              value: laravel-db
+              value: Chhoungseang-db
           ports:
             - containerPort: 3306
           volumeMounts:
